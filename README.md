@@ -2,14 +2,16 @@
 
 **Contribution Number:** 1  
 **Student:** Sujal Ratna Tamrakar  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Issue:** [\[GitHub issue link\]](https://github.com/rawilk/filament-quill/issues/91)  
+**Status:** Phase I Complete
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+I chose this issue because it aligns perfectly with my existing experience working within the Laravel and Filament PHP ecosystems. The feature request addresses a highly practical capability—allowing users to intuitively resize images directly within the rich-text editor UI. Currently, integrating third-party resizing packages with this specific Filament wrapper is complex, leaving a clear gap that would highly benefit the project's user base.
+
+Furthermore, this issue presents an excellent open-source opportunity because the project maintainer explicitly stated that while they appreciate the feature, it is not a high priority for them right now and they are openly welcoming a community pull request. Working on this will allow me to deepen my understanding of custom form component integrations in Filament, learn how to bridge frontend editor modules with backend configurations, and deliver a feature that the community is actively waiting for.
 
 ---
 
