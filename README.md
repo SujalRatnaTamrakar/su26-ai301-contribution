@@ -117,24 +117,44 @@ To establish a local development and testing environment for this feature, I con
 
 [High-level description of your fix approach]
 
+---
+
+## Solution Approach
+
+### Analysis
+
+The package serves as a specialized Filament wrapper configuration layer around the Quill rich-text editor, bridging backend PHP settings to a frontend JavaScript canvas initialization. Because the core Quill engine manages advanced capabilities through modular plugin extensions, inline image resizing is completely missing by default. To isolate how the package registers modules, we must trace the asset configuration bridge:
+1. **The Core Field:** `src/Forms/Components/Quill.php` handles configuration states on the PHP side.
+2. **The View Layer:** `resources/views/forms/components/quill.blade.php` renders the wrapper HTML container.
+3. **The Script Bootstrapper:** `resources/js/filament-quill.js` executes the actual `new Quill()` instantiation and defines the module arrays passed to the editor.
+
+### Proposed Solution
+
+The implementation requires a multi-layered approach to safely vendor and expose the resizing module. At a high level, I will incorporate an open-source resizing module (such as `quill-resize-module` or a modern alternative) directly into the frontend assets of the package fork. I will then expose a clean configuration method on the backend PHP field class, pass that flag through the Blade template layer into the window context, and conditionally inject the resizing module array inside the JavaScript instantiator function.
+
 ### Implementation Plan
 
 Using UMPIRE framework (adapted):
 
-**Understand:** [Restate the problem]
+**Understand:** Provide an intuitive, interactive inline image resizing mechanism inside the Filament Quill editor view. When an image node is selected, drag handles or overlay dimension toggles must appear, updating the inline HTML style output seamlessly upon save.
 
-**Match:** [What similar patterns/solutions exist in the codebase?]
+**Match:** I will inspect how the package handles other pre-configured toolbar matrices or customizable options (like custom image uploading paths or standard text alignments) inside `src/Forms/Components/Quill.php` and its matching blade template to mirror how state options are passed down to the client layout.
 
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
+**Plan:**
+1. **Frontend Asset Discovery:** Locate the primary JavaScript build array inside `resources/js/` to verify how external modules are bundled or registered with the `Quill` instance.
+2. **Expose Fluent PHP API:** Open `src/Forms/Components/Quill.php` and introduce a fluent configuration method:
+   ```php
+   public function imageResize(bool | Closure $condition = true): static
+   ```
+3. **Template Data Bridge:** Update the component data extractor array in the Blade view (`resources/views/forms/components/quill.blade.php`) to emit the boolean state flag downstream into the Alpine.js or vanilla JavaScript boot configuration.
+4. **JavaScript Module Injection:** Update the constructor options array inside `resources/js/` to detect the incoming configuration flag and register the resizing plugin within the active `modules: {}` object block.
+5. **Recompile Package Assets:** Execute the internal build tools (e.g., `npm run build` or Vite/Mix compiling scripts provided by the repo) to bundle the newly added frontend logic.
 
-**Implement:** [Link to your branch/commits as you work]
+**Implement:** [Link to your active development branch and structural commits as you push code changes]
 
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
+**Review:** I will check the root directory for a `CONTRIBUTING.md` file to verify coding standards, strict type declarations, and pull request naming conventions. I will also check the package git log to match the maintainer's preferred commit message style (e.g., Conventional Commits).
 
-**Evaluate:** [How will you verify it works?]
+**Evaluate:** To verify the solution, I will perform manual runtime testing inside the local host application dashboard (`http://localhost/admin`). I will inject a sample image inside the rendered input, verify the initialization of interactive scaling borders, change the element dimensions, save the post instance, and confirm the precise dimension output parameters persist perfectly within the MySQL database storage layer without breaking surrounding rich-text content layouts.
 
 ---
 
