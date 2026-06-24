@@ -7,6 +7,12 @@
 
 ---
 
+## Feature Summary
+
+Added opt-in image resizing and alignment inside the Quill editor using `quill-blot-formatter`. Images can now be resized with drag handles and aligned left, center, or right from the overlay toolbar, with resized dimensions and alignment persisted as HTML attributes.
+
+---
+
 ## Why I Chose This Issue
 
 I chose this issue because it aligns perfectly with my existing experience working within the Laravel and Filament PHP ecosystems. The feature request addresses a highly practical capability—allowing users to intuitively resize images directly within the rich-text editor UI. Currently, integrating third-party resizing packages with this specific Filament wrapper is complex, leaving a clear gap that would highly benefit the project's user base.
@@ -118,7 +124,9 @@ The package serves as a specialized Filament wrapper configuration layer around 
 
 ### Proposed Solution
 
-The implementation requires a multi-layered approach to safely vendor and expose the resizing module. At a high level, I will incorporate an open-source resizing module (such as `quill-resize-module` or a modern alternative) directly into the frontend assets of the package fork. I will then expose a clean configuration method on the backend PHP field class, pass that flag through the Blade template layer into the window context, and conditionally inject the resizing module array inside the JavaScript instantiator function.
+The implementation used a multi-layered approach to safely vendor and expose the resizing module. I added `quill-blot-formatter` to the frontend assets, exposed a clean backend toggle on the PHP field class, passed that flag through the Blade/template layer into the editor bootstrap, and conditionally injected the resizing module into the Quill configuration.
+
+The editor also uses a custom image blot so resized width/height values and alignment survive save/reload instead of being stripped by Quill's default image blot.
 
 ### Implementation Plan
 
@@ -129,20 +137,20 @@ Using UMPIRE framework (adapted):
 **Match:** I will inspect how the package handles other pre-configured toolbar matrices or customizable options (like custom image uploading paths or standard text alignments) inside `src/Forms/Components/Quill.php` and its matching blade template to mirror how state options are passed down to the client layout.
 
 **Plan:**
-1. **Frontend Asset Discovery:** Locate the primary JavaScript build array inside `resources/js/` to verify how external modules are bundled or registered with the `Quill` instance.
-2. **Expose Fluent PHP API:** Open `src/Forms/Components/Quill.php` and introduce a fluent configuration method:
+1. **Frontend Asset Discovery:** Located the primary JavaScript build array inside `resources/js/` and wired the external module into the `Quill` instance.
+2. **Expose Fluent PHP API:** Added a fluent configuration method:
    ```php
-   public function imageResize(bool | Closure $condition = true): static
+   public function allowImageResizing(bool | Closure $condition = true): static
    ```
-3. **Template Data Bridge:** Update the component data extractor array in the Blade view (`resources/views/forms/components/quill.blade.php`) to emit the boolean state flag downstream into the Alpine.js or vanilla JavaScript boot configuration.
-4. **JavaScript Module Injection:** Update the constructor options array inside `resources/js/` to detect the incoming configuration flag and register the resizing plugin within the active `modules: {}` object block.
-5. **Recompile Package Assets:** Execute the internal build tools (e.g., `npm run build` or Vite/Mix compiling scripts provided by the repo) to bundle the newly added frontend logic.
+3. **Template Data Bridge:** Updated the component data extractor layer to emit the boolean state flag downstream into the JavaScript boot configuration.
+4. **JavaScript Module Injection:** Updated the constructor options array inside `resources/js/` to detect the incoming configuration flag and register the resizing plugin within the active `modules: {}` object block.
+5. **Recompile Package Assets:** Rebuilt the package assets so the new editor behavior ships in the published bundle.
 
-**Implement:** [Link to your active development branch and structural commits as you push code changes]
+**Implement:** Completed in the `feature/image-resizing` commit.
 
 **Review:** I will check the root directory for a `CONTRIBUTING.md` file to verify coding standards, strict type declarations, and pull request naming conventions. I will also check the package git log to match the maintainer's preferred commit message style (e.g., Conventional Commits).
 
-**Evaluate:** To verify the solution, I will perform manual runtime testing inside the local host application dashboard (`http://localhost/admin`). I will inject a sample image inside the rendered input, verify the initialization of interactive scaling borders, change the element dimensions, save the post instance, and confirm the precise dimension output parameters persist perfectly within the MySQL database storage layer without breaking surrounding rich-text content layouts.
+**Evaluate:** Verified with Pint and the Pest suite, plus manual editor testing to confirm resized dimensions and alignment persist cleanly in saved HTML.
 
 ---
 
@@ -150,50 +158,49 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+- Verifies image resizing is off by default.
+- Verifies `allowImageResizing()` enables the feature.
+- Verifies a closure condition can enable or disable the feature dynamically.
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- Verifies the global config default enables resizing when set in `config/filament-quill.php`.
+- Verifies a field-level override disables resizing even when the config default is enabled.
 
 ### Manual Testing
 
-[What you tested manually and results]
+I tested the editor flow in the browser by uploading an image, resizing it with drag handles, changing alignment with the overlay toolbar, and saving the content. The resulting HTML kept the resized width/height and `data-align` values, and the image rendered correctly after reload.
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress
 
-[What you built this week, challenges faced, decisions made]
+I traced the Quill initialization path, identified where editor modules are assembled, and added the opt-in resizing toggle to the PHP API and frontend bootstrap.
 
-### Week [Y] Progress
+### Week 2 Progress
 
-[Continue documenting as you work]
+I finished the custom image blot, Livewire state synchronization, and styling updates, then rebuilt the assets and validated the end-to-end editor behavior.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:** `resources/js/quill.js`, `resources/js/blots/resizable-image.js`, `resources/css/blots/resize.css`, `resources/css/content.css`, `resources/css/app.css`, `src/Concerns/HasQuillOptions.php`, `config/filament-quill.php`, `tests/Feature/ImageResizingTest.php`, `README.md`
+- **Key commits:** `feature/image-resizing`
+- **Approach decisions:** Used `quill-blot-formatter` for the resize UI, persisted image metadata as attributes instead of inline styles, and added Livewire syncing so direct DOM mutations stay in editor state.
 
 ---
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when submitted]
+**PR Link:** [Add PR URL here]
 
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+**PR Description:** Added opt-in image resizing and alignment to the Quill editor field using `quill-blot-formatter`. The update includes a backend toggle, attribute-based persistence for resized images, Livewire synchronization, themed UI styling, and test coverage.
 
 **Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
+- [Pending]: [No maintainer feedback yet]
 
-**Status:** [Awaiting review / Iterating / Approved / Merged]
+**Status:** Awaiting review
 
 ---
 
@@ -201,20 +208,20 @@ Using UMPIRE framework (adapted):
 
 ### Technical Skills Gained
 
-[What you learned technically]
+I learned how to bridge a Quill plugin into a Filament field, preserve custom image metadata through Quill blots, and sync direct DOM changes back into Livewire state.
 
 ### Challenges Overcome
 
-[What was hard and how you solved it]
+The hardest part was making resize mutations persist without breaking Quill state updates. I solved that by combining a custom image blot with a targeted mutation observer and a guard against self-originated state re-renders.
 
 ### What I'd Do Differently Next Time
 
-[Reflection on your process]
+I would start the editor-state persistence design earlier, since resize plugins often mutate the DOM directly and need special handling beyond standard Quill text-change events.
 
 ---
 
 ## Resources Used
 
-- [Link to helpful documentation]
-- [Tutorial or Stack Overflow post that helped]
-- [GitHub issues or discussions that helped]
+- [Quill documentation](https://quilljs.com/)
+- [Filament documentation](https://filamentphp.com/docs)
+- [Issue #91 discussion](https://github.com/rawilk/filament-quill/issues/91)
