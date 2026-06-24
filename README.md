@@ -193,7 +193,7 @@ I finished the custom image blot, Livewire state synchronization, and styling up
 
 ## Pull Request
 
-**PR Link:** [Add PR URL here]
+**PR Link:** [[PR URL HERE](https://github.com/rawilk/filament-quill/pull/142)]
 
 **PR Description:** Added opt-in image resizing and alignment to the Quill editor field using `quill-blot-formatter`. The update includes a backend toggle, attribute-based persistence for resized images, Livewire synchronization, themed UI styling, and test coverage.
 
