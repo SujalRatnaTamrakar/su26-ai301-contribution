@@ -3,6 +3,7 @@
 **Contribution Number:** 2  
 **Student:** Sujal Ratna Tamrakar  
 **Issue:** [lanedirt/OGameX #922](https://github.com/lanedirt/OGameX/issues/922)  
+**My Fork:** [sujalratnatamrakar/OGameX](https://github.com/SujalRatnaTamrakar/OGameX)  
 **Working Branch:** `feature/922-delete-inactive-players` (branched from latest `main`)  
 **Status:** Phase II Complete
 
