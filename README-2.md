@@ -5,7 +5,7 @@
 **Issue:** [lanedirt/OGameX #922](https://github.com/lanedirt/OGameX/issues/922)  
 **My Fork:** [sujalratnatamrakar/OGameX](https://github.com/SujalRatnaTamrakar/OGameX)  
 **Working Branch:** `feature/922-delete-inactive-players` (branched from latest `main`)  
-**Status:** Phase II Complete
+**Status:** Phase III Complete
 
 ---
 
@@ -168,7 +168,7 @@ Using UMPIRE framework (adapted):
 - *Deletion:* add `PlayerService::deleteInactiveAccount()` (transaction-wrapped, abandon-based, orphan-safe); add `bool $force = false` to `PlanetService::abandonPlanet()` to bypass the two guards; add `TODO (#146)` markers at the planet-removal points.
 - *Routine:* add `app/Console/Commands/Scheduler/DeleteInactivePlayers.php`; register it `->daily()->withoutOverlapping()` in `routes/console.php`.
 
-**Implement:** *In progress on `feature/922-delete-inactive-players` (Phase III).*
+**Implement:** *Completed on `feature/922-delete-inactive-players` in commit `932ddbc5` — see Implementation Notes below.*
 
 **Review (planned self-review checklist):** match surrounding code style (snake_case where present, helper methods, no duplication per `CONTRIBUTING.md` §1); pass Pint, PHPStan, Rector, and the test suite; keep the change scoped to #922 (one issue, one PR); confirm `abandonPlanet()`'s default behavior is unchanged for existing callers.
 
@@ -178,13 +178,71 @@ Using UMPIRE framework (adapted):
 
 ## Testing Strategy
 
-*(To be filled in during Phase III)*
+### Automated tests
+
+New file `tests/Feature/DeleteInactivePlayersCommandTest.php` — 5 feature tests that exercise the new behavior, written to follow the project's existing test conventions:
+
+- Extends **`AccountTestCase`** (the project's base class for account-context tests) and reuses its helpers: `$this->planetService`, `planetAddResources()`, `addResourceBuildRequest()`, and `PlanetServiceFactory::createMoonForPlanet()`.
+- Mirrors the **tracked-user + `tearDown()` cleanup** pattern from `tests/Feature/BanTest.php` (factory users are recorded and deleted, with `users_tech` cleaned first to avoid FK errors).
+- Uses `User::factory()`, `assertDatabaseHas/Missing`, and time-travel (`Date::now()->subDays()`), consistent with `DeleteOldMessagesCommandTest`.
+
+| Test | What it verifies |
+| --- | --- |
+| `testCommandIsDisabledWhenDaysIsZero` | Setting `0` → no-op; account preserved |
+| `testDeletesInactivePlayerButKeepsActivePlayer` | Over-threshold account deleted; recently-active account kept |
+| `testVacationModeDoesNotExemptPlayer` | Vacation-mode account is still deleted |
+| `testExcludesAdminPlayers` | Admin account is preserved |
+| `testDeletionAbandonsPlanetsAndPreservesReports` | Planets/moon/queues removed, own fleet mission deleted, espionage report preserved with `planet_user_id` nulled |
+
+**Results:** all 5 new tests pass, and the **existing suite still passes** — `php artisan test` → **1065 passed (11,744 assertions), 0 failures**. Other gates: PHPStan (651 files, no errors), Rector (no changes needed). Laravel Pint passes for every file this PR touches; the only Pint failures are pre-existing style issues in ~19 files this PR does **not** modify, left untouched per the "one issue, one PR" rule.
+
+### Manual verification
+
+- `php artisan schedule:list` confirms `ogamex:scheduler:delete-inactive-players` is registered to run daily.
+- `php artisan migrate` applies the seed migration; the setting reads back as `0` (disabled) by default.
+- Running the command with the setting at `0` prints the "disabled" message and deletes nothing — confirming the safe default.
+- Design smoke path: set the admin field to a threshold, backdate a test account's `users.time` via tinker, run the command, and confirm the account and its galaxy slot are removed.
+
+All commands executed inside the container via `docker compose exec ogamex-app ...`.
 
 ---
 
 ## Implementation Notes
 
-*(To be filled in during Phase III)*
+### Implementation Progress
+
+All Phase III work landed in a single, scoped commit on `feature/922-delete-inactive-players`:
+
+- **`932ddbc5`** — *feat: add automatic deletion of inactive players (#922)*
+
+The diff is limited to the 9 files below — no unrelated formatting, no commented-out code:
+
+| File | Change |
+| --- | --- |
+| `app/Services/SettingsService.php` | `inactivePlayerDeletionDays()` typed getter |
+| `database/migrations/2026_07_08_000000_add_inactive_player_deletion_setting.php` | Seed default `0` |
+| `app/Http/Controllers/Admin/ServerSettingsController.php` | index/update wiring for the setting |
+| `resources/views/ingame/admin/serversettings.blade.php` | Admin "Player deletion settings" field |
+| `app/Services/PlanetService.php` | `abandonPlanet(bool $force = false)` + `TODO (#146)` markers |
+| `app/Services/PlayerService.php` | New `deleteInactiveAccount()` (abandon-based wipe) |
+| `app/Console/Commands/Scheduler/DeleteInactivePlayers.php` | New daily scheduler command |
+| `routes/console.php` | Register the command `->daily()->withoutOverlapping()` |
+| `tests/Feature/DeleteInactivePlayersCommandTest.php` | Feature tests |
+
+### Challenges Faced
+
+Real obstacles hit during Phase III and how they were resolved:
+
+1. **Report foreign keys are `ON DELETE SET NULL`, not orphaning.** My first read of the create-table migrations suggested battle/espionage reports would be orphaned on deletion. Running `git log` on those tables surfaced a later fix (#1326) that changed the FK to `ON DELETE SET NULL` *specifically to preserve reports when a player is deleted*. **Resolution:** the deletion logic deliberately does **not** delete reports, and a test asserts the report survives with `planet_user_id` nulled.
+2. **`abandonPlanet()` guards block full-account deletion.** It throws on the last remaining planet and on any planet with active fleet missions — both conditions a purged account triggers. **Resolution:** added an optional `$force` flag to bypass the guards for full-account deletion, leaving the default (guarded) behavior unchanged for all existing callers.
+3. **A stale factory cache caused an FK violation in tests.** The integrity test creates a moon *after* the `PlayerService` was cached; the command then deleted the user while a moon row still referenced it → FK error. **Resolution:** the command loads via `PlayerServiceFactory::make($id, true)` (reload cache) so it always operates on the account's current planets/moons — which is also the correct production behavior.
+4. **No Node/npm toolchain in the app container.** The asset-build step could not run there. **Resolution:** confirmed via `vite.config.js` that only `resources/js/*`/CSS files are Vite inputs, so a Blade-only change requires no rebuild — avoiding unrelated build-artifact churn.
+
+### Engineering Judgment
+
+- **Edge cases the issue didn't mention** were identified and handled proactively: excluding admin accounts (mirroring the existing "Administrators cannot be banned" protection), preserving shared battle/espionage reports, cascading moon removal, and preserving other players' incoming fleet missions.
+- **Reused a project-specific test helper:** built on `AccountTestCase` and the `BanTest` tracked-user/`tearDown` cleanup pattern instead of hand-rolling fixtures.
+- **Descoped sensibly:** left structured `TODO (#146)` markers for the unimplemented "Destroyed Planet" logic rather than attempting to build it, exactly as the maintainer requested.
 
 ---
 
