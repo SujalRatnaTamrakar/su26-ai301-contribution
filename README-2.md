@@ -5,7 +5,8 @@
 **Issue:** [lanedirt/OGameX #922](https://github.com/lanedirt/OGameX/issues/922)  
 **My Fork:** [sujalratnatamrakar/OGameX](https://github.com/SujalRatnaTamrakar/OGameX)  
 **Working Branch:** `feature/922-delete-inactive-players` (branched from latest `main`)  
-**Status:** Phase III Complete
+**Pull Request:** [lanedirt/OGameX #1490](https://github.com/lanedirt/OGameX/pull/1490) — OPEN, approved by @Geda173  
+**Status:** Phase IV Complete
 
 ---
 
@@ -248,13 +249,57 @@ Real obstacles hit during Phase III and how they were resolved:
 
 ## Pull Request
 
-*(To be filled in during Phase IV)*
+- **PR link:** [lanedirt/OGameX #1490 — Feature/922 delete inactive players](https://github.com/lanedirt/OGameX/pull/1490)
+- **Direction:** opened from `SujalRatnaTamrakar:feature/922-delete-inactive-players` → **upstream `lanedirt/OGameX:main`** (not a draft, not a fork-internal PR).
+- **Close keyword:** the PR description uses `Closes #922` so the issue auto-closes on merge.
+- **Template:** filled out using the project's PR template (Description, Type of Change, Related Issues, CONTRIBUTING checklist, Additional Information). The full description text is saved in `PR-922-description.md`.
+- **Current status:** **OPEN — APPROVED(1/3)** by collaborator @Geda173 (2026-07-20) - Pending approval from 2 more maintainers. Review comments received from @Geda173 and owner @lanedirt on the reviewed commit `efd0b95`; all comments are "preference/optional" per the reviewer, with no blocking change requested. See the Maintainer Feedback Log below.
+
+### PR Description Summary (why → what)
+
+- **Why:** OGameX already *measures* inactivity (`users.time`, via `PlayerService::isInactive()`), but nothing acts on it — abandoned accounts persist forever, inflating the DB and cluttering the galaxy with dead planets. Context the diff alone can't convey.
+- **What:** a single `inactive_player_deletion_days` server setting (0 = disabled, default), a daily scheduled command, and an abandon-based account wipe; vacation mode is not exempt; admins are excluded; `TODO (#146)` markers left for the unbuilt "Destroyed Planet" logic.
+- **Acceptance checklist (all checked in the PR):** tests added; full suite passing (1065 passed / 11,744 assertions); PSR-12 via Pint on all touched files; PHPStan clean; Rector clean; no breaking changes (ships disabled by default, new `$force` param is optional).
+- **Before/after evidence (backend):** console output of `php artisan test` (all green), `php artisan schedule:list` showing the new daily job, and the command printing the "disabled" message when the setting is `0`.
+
+---
+
+## Maintainer Feedback Log
+
+PR **#1490** was reviewed and **approved** by @Geda173 (Collaborator) on **2026-07-20**, with additional input from owner **@lanedirt**. The reviewer explicitly noted "there isn't anything big that needs changing, it's mostly preference." Reviewed commit: `efd0b95` (local `932ddbc5`). Each comment and my response:
+
+| # | File / area | Maintainer feedback (2026-07-20) | My response & status |
+| --- | --- | --- | --- |
+| 1 | `DeleteInactivePlayersCommandTest.php` | @Geda173: add a test for the case where **another player has a fleet in flight toward the inactive player's planet** — the scenario `$force` unblocks. Safety depends on the `planet_id_to === null` check in `GameMission::process()`, which is external and unaware it's load-bearing here. | **Agreed — highest-value item.** Will add a feature test that dispatches an attack fleet at the inactive player's planet, runs the command, and asserts the attacker's fleet reverses and returns home (pinning the external guard). Planned for a follow-up commit on this branch. |
+| 2 | `ServerSettingsController.php` | @Geda173: permanent deletion has no undo — put a **floor** on the value (currently `1` is accepted) and/or a **confirmation dialog** on the setting. | **Agreed.** Will add a confirmation prompt in the admin Server Settings UI before saving a non-zero value; will discuss with maintainer whether to also enforce a minimum-days floor server-side. Follow-up commit planned. |
+| 3 | `PlayerService::deleteInactiveAccount()` | @Geda173: heavy overlap with `delete()` (5 identical statements) risks drift. Since `delete()` is only called from dev commands, consider making this the **single implementation with a flag** for how planets are handled; this version's transaction wrapper is another reason to consolidate. | **Agreed — good consolidation.** Will merge the two into one method with a `planet handling` mode flag (raw-delete vs. abandon), keep the transaction wrapper, and update the dev-command caller. Follow-up commit planned. |
+| 4 | `DeleteInactivePlayers.php` | @Geda173: player/planet factories are shared singletons with no cache-clear, so memory grows across a run; batching limits query size but not memory. Wants confirmation it's been **tried against a large backlog** (e.g. main.ogamex.dev's many inactive accounts). | **Acknowledged.** Will benchmark a large-backlog run and report memory; if needed, add periodic factory-cache clearing between chunks. Noted as a scaling follow-up. |
+| 5 | `PlayerService::deleteInactiveAccount()` | @Geda173: the `Highscore::where(...)->delete()` line is a **no-op** — the highscores FK already cascades on user delete. | **Agreed — will remove the redundant line.** Confirmed the `highscores` FK cascades on user deletion. Follow-up commit planned. |
+| 6 | `DeleteInactivePlayers.php` | @Geda173 (optional): scheduled output isn't captured anywhere — since this job deletes accounts irreversibly, add a `Log::error()` alongside the console message on failure. | **Agreed — will add `Log::error()`** in the catch block so a nightly failure is visible in logs, not just console. Follow-up commit planned. |
+| 7 | `DeleteInactivePlayers.php` | @Geda173 → @lanedirt: should **moderators** be excluded alongside admins (`withoutRole(['admin', 'moderator'])`)? Role is unused today but targets exactly infrequent-login staff. **@lanedirt agreed** it's a good idea to add now. | **Agreed, endorsed by owner.** Will change the exclusion to `withoutRole(['admin', 'moderator'])`. Follow-up commit planned. |
+
+> Status note: the review landed at the end of Phase IV. The follow-up commits addressing items 1–3, 5, 6 and 7 (and the investigation for item 4) are the immediate next actions on this branch; they are logged here so the review loop is documented.
 
 ---
 
 ## Learnings & Reflections
 
-*(To be filled in during Phase IV)*
+### Technical gains
+
+- **Laravel 13 scheduling & Artisan attributes.** Learned how OGameX registers cron-style work in `routes/console.php` (no `Console/Kernel.php`) and how scheduler commands use `#[Signature]`/`#[Description]` attributes with `chunkById` for safe batch processing.
+- **The factory-cache model.** `PlayerServiceFactory`/`PlanetServiceFactory` cache service instances per request; passing `reloadCache = true` was essential so deletion acts on live DB state — a bug I hit and fixed in the integrity test. This also became the seed of the maintainer's scaling comment (shared singletons hold memory across a long run).
+- **Reading the schema through migration *history*, not just the current schema.** The single most valuable habit this contribution: `git log`/`git blame` on the report tables revealed the `ON DELETE SET NULL` FK change (#1326) whose intent was to *preserve* reports on player deletion. The create-table migration alone would have led me to wrongly delete those rows.
+- **Reusing sanctioned patterns.** Mirroring `DeleteOldMessages` (command shape) and `BanTest` (tracked-user/`tearDown` fixtures) made the change read like it belonged, which the reviewer's "mostly preference" verdict reflected.
+
+### What I'd do differently
+
+- **Write the "external guard" test up front.** The reviewer's top request (item 1) — a test for an in-flight enemy fleet turning around — is exactly the behavior `$force` unblocks. I reasoned about that edge case in Phase II but relied on an *external* invariant (`planet_id_to === null` in `GameMission::process()`) without a test pinning it. Lesson: when a feature's safety depends on code outside the feature, add a regression test that fails if that external code changes.
+- **Design against irreversible-action foot-guns earlier.** A confirmation dialog / minimum-days floor (item 2) should have been part of the first design for anything that permanently deletes accounts, not a review afterthought.
+- **Consolidate duplication immediately.** I deliberately left `delete()` untouched to keep the diff small, but that produced ~5 duplicated statements the reviewer flagged (item 3). A cleaner call would have been to unify on one method with a mode flag from the start.
+
+### Teachable insight for future cohorts
+
+> When your change relies on an invariant that lives in *someone else's* code (here, the null-target check in `GameMission::process()` that makes bypassing the active-missions guard safe), that invariant is silently "load-bearing" for your feature — but the other code has no idea. Write a test that asserts the end-to-end behavior so that if the external invariant ever changes, *your* test breaks and warns the next maintainer. Reading a table's **migration history with `git log`** (not just its current definition) is the fastest way to discover intent like "this FK was made `SET NULL` on purpose."
 
 ---
 
